@@ -1,0 +1,10 @@
+{
+  "name": "@meditrace/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "build": "echo Shared types ready"
+  }
+}

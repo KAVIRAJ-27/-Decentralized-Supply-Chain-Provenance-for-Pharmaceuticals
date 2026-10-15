@@ -1,0 +1,36 @@
+{
+  "name": "meditrace-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Decentralized Supply Chain Provenance for Pharmaceuticals",
+  "workspaces": [
+    "shared",
+    "blockchain",
+    "backend",
+    "frontend",
+    "mobile"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "compile:contracts": "npm run --workspace=blockchain compile",
+    "test:contracts": "npm run --workspace=blockchain test",
+    "build:backend": "npm run --workspace=backend build",
+    "build:frontend": "npm run --workspace=frontend build",
+    "build:mobile": "npm run --workspace=mobile build",
+    "dev:backend": "npm run --workspace=backend dev",
+    "dev:frontend": "npm run --workspace=frontend dev",
+    "dev:mobile": "npm run --workspace=mobile dev",
+    "test:all": "npm run test:contracts && npm run --workspace=backend test"
+  },
+  "keywords": [
+    "blockchain",
+    "pharmaceutical",
+    "supply-chain",
+    "provenance",
+    "solidity",
+    "ethereum",
+    "qr-code"
+  ],
+  "author": "Kavi & Kani",
+  "license": "MIT"
+}

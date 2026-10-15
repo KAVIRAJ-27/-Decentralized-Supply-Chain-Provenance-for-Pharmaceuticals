@@ -1,0 +1,16 @@
+{
+  "name": "@meditrace/blockchain",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart contracts and tests for MediTrace Pharmaceutical Provenance",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "node": "hardhat node"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.22.2"
+  }
+}
