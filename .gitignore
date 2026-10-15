@@ -29,6 +29,7 @@ out/
 *.sqlite3
 *.db
 dev.db
+backend/data/*.json
 
 # Logs
 npm-debug.log*

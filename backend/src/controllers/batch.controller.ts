@@ -2,18 +2,39 @@ import { Response } from 'express';
 import { db, BatchRecord, CustodyRecord } from '../services/db.service';
 import { blockchainService } from '../services/blockchain.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { QrService } from '../services/qr.service';
 
 export function getAllBatches(req: AuthenticatedRequest, res: Response) {
+  const user = req.user!;
   const { role, owner } = req.query as { role?: string; owner?: string };
-  const batches = db.listBatches(role, owner);
+  const orgFilter = user.role === 'MANUFACTURER' ? user.organizationId : undefined;
+  const batches = db.listBatches(role, owner, orgFilter);
   return res.json({ batches });
 }
 
+export function getManufacturerDashboardStats(req: AuthenticatedRequest, res: Response) {
+  const user = req.user!;
+  const stats = db.getManufacturerStats(user.organizationId);
+  return res.json({ success: true, stats, data: stats, timestamp: new Date().toISOString() });
+}
+
 export function getBatchById(req: AuthenticatedRequest, res: Response) {
+  const user = req.user!;
   const batchId = req.params.batchId;
   const batch = db.findBatchById(batchId);
   if (!batch) {
     return res.status(404).json({ error: `Batch ${batchId} not found` });
+  }
+
+  // Cross-organization boundary isolation for manufacturers
+  if (
+    user.role === 'MANUFACTURER' &&
+    batch.manufacturerOrganizationId &&
+    batch.manufacturerOrganizationId !== user.organizationId
+  ) {
+    return res.status(403).json({
+      error: 'Forbidden: You do not have permission to view batch records belonging to another manufacturer.',
+    });
   }
 
   const history = db.getCustodyHistory(batchId);
@@ -24,9 +45,12 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
   const user = req.user!;
   const {
     batchId,
+    medicineId,
     drugName,
     genericName,
     dosage,
+    strength,
+    packaging,
     quantity,
     manufacturingDate,
     expiryDate,
@@ -39,12 +63,17 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
   }
 
   const txHash = blockchainService.generateTxHash();
+  const qrCodeUrl = QrService.buildVerificationUrl(batchId);
 
   const newBatch: BatchRecord = {
     batchId,
+    medicineId: medicineId || undefined,
+    manufacturerOrganizationId: user.organizationId,
     drugName,
     genericName: genericName || drugName,
     dosage: dosage || 'Standard Formulation',
+    strength: strength || undefined,
+    packaging: packaging || undefined,
     quantity,
     remainingQuantity: quantity,
     manufacturerName: user.organizationName || user.name,
@@ -56,6 +85,7 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
     currentOwnerName: user.organizationName || user.name,
     currentOwnerAddress: user.walletAddress,
     isRecalled: false,
+    qrCodeUrl,
     blockchainTxHash: txHash,
     blockNumber: Math.floor(10000 + Math.random() * 5000),
     createdAt: new Date().toISOString(),
@@ -73,15 +103,20 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
     actorAddress: user.walletAddress,
     location: location || 'Manufacturing Facility - Batch Formulation Unit',
     temperatureCelsius: 20.0,
-    notes: 'Batch synthesized, quality certified, and indexed into blockchain provenance ledger.',
+    notes: 'Batch synthesized, quality certified, and indexed into provenance ledger.',
     txHash,
   };
 
   db.createBatch(newBatch, initialEvent);
 
+  const qrSvg = QrService.generateQrSvg(batchId);
+
   return res.status(201).json({
     message: 'Batch successfully created and registered on ledger',
     batch: newBatch,
+    data: newBatch,
+    qrCodeUrl,
+    qrSvg,
     txHash,
   });
 }
@@ -252,5 +287,55 @@ export function recallBatch(req: AuthenticatedRequest, res: Response) {
     message: `Batch ${batchId} has been successfully recalled. Alert broadcasted across network.`,
     batch: updated,
     txHash,
+  });
+}
+
+/**
+ * Retrieves the packaging QR Code matrix and printable GS1/GMP batch label
+ * for authorized pharmaceutical participants (Manufacturer, Custodians, Admin).
+ */
+export function getBatchQr(req: AuthenticatedRequest, res: Response) {
+  const user = req.user!;
+  const batchId = (req.params.batchId || '').trim().toUpperCase();
+
+  const batch = db.findBatchById(batchId);
+  if (!batch) {
+    return res.status(404).json({ error: `Batch ${batchId} not found` });
+  }
+
+  // Access control: Admin, Manufacturer of origin, current custodian, or authorized supply-chain actor
+  const isOrigin = batch.manufacturerOrganizationId === user.organizationId;
+  const isOwner = batch.currentOwnerAddress.toLowerCase() === user.walletAddress.toLowerCase();
+  const isAdmin = user.role === 'ADMIN';
+  const isSupplyActor = ['MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY', 'HOSPITAL'].includes(user.role);
+
+  if (!isAdmin && !isOrigin && !isOwner && !isSupplyActor) {
+    return res.status(403).json({
+      error: 'Unauthorized: You do not have permissions to access the official packaging label for this batch.',
+    });
+  }
+
+  const verificationUrl = QrService.buildVerificationUrl(batch.batchId);
+  const qrSvg = QrService.generateQrSvg(batch.batchId);
+  const printableLabelHtml = QrService.generatePrintableLabelHtml({
+    batchId: batch.batchId,
+    drugName: batch.drugName,
+    genericName: batch.genericName,
+    dosage: batch.dosage,
+    manufacturerName: batch.manufacturerName,
+    manufacturingDate: batch.manufacturingDate,
+    expiryDate: batch.expiryDate,
+    verificationUrl,
+  });
+
+  return res.json({
+    batchId: batch.batchId,
+    drugName: batch.drugName,
+    genericName: batch.genericName,
+    dosage: batch.dosage,
+    manufacturerName: batch.manufacturerName,
+    verificationUrl,
+    qrSvg,
+    printableLabelHtml,
   });
 }

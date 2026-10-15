@@ -6,15 +6,19 @@ import {
   updateBatchStatus,
   dispenseBatch,
   recallBatch,
+  getManufacturerDashboardStats,
+  getBatchQr,
 } from '../controllers/batch.controller';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { validateBatchIdParam, validateCreateBatchBody } from '../middleware/validator.middleware';
 
 const router = Router();
 
-// Batch listing & retrieval
+// Batch listing & metrics
 router.get('/', authenticate, getAllBatches);
+router.get('/manufacturer/stats', authenticate, requireRole('MANUFACTURER', 'ADMIN'), getManufacturerDashboardStats);
 router.get('/:batchId', authenticate, validateBatchIdParam, getBatchById);
+router.get('/:batchId/qr', authenticate, validateBatchIdParam, getBatchQr);
 
 // Lifecycle actions
 // 1. Manufacturer creates new medicine batch

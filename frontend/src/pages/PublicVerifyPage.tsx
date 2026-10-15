@@ -13,9 +13,10 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verification, setVerification] = useState<PublicVerificationResponse | null>(null);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   const handleVerify = async (idToVerify?: string) => {
-    const id = (idToVerify || batchIdInput).trim();
+    const id = (idToVerify || batchIdInput).trim().toUpperCase();
     if (!id) return;
 
     setLoading(true);
@@ -40,6 +41,70 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
       handleVerify('MED-20261015-A8F2K');
     }
   }, [initialBatchId]);
+
+  const handlePrintLabel = () => {
+    if (!verification) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const qrSvg = `
+      <svg width="180" height="180" viewBox="0 0 200 200" fill="#000" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="50" height="50" fill="#070a12" rx="4" />
+        <rect x="20" y="20" width="30" height="30" fill="#ffffff" rx="2" />
+        <rect x="27" y="27" width="16" height="16" fill="#00d2b4" rx="2" />
+        <rect x="140" y="10" width="50" height="50" fill="#070a12" rx="4" />
+        <rect x="150" y="20" width="30" height="30" fill="#ffffff" rx="2" />
+        <rect x="157" y="27" width="16" height="16" fill="#00d2b4" rx="2" />
+        <rect x="10" y="140" width="50" height="50" fill="#070a12" rx="4" />
+        <rect x="20" y="150" width="30" height="30" fill="#ffffff" rx="2" />
+        <rect x="27" y="157" width="16" height="16" fill="#00d2b4" rx="2" />
+        <rect x="70" y="15" width="12" height="12" fill="#070a12" />
+        <rect x="90" y="15" width="12" height="12" fill="#070a12" />
+        <rect x="115" y="15" width="12" height="12" fill="#070a12" />
+        <rect x="75" y="75" width="14" height="14" fill="#00b89e" />
+        <rect x="95" y="95" width="14" height="14" fill="#00d2b4" rx="2" />
+      </svg>
+    `;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>MediTrace Batch Label - ${verification.batchId}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #111; }
+            .label-box { border: 2px dashed #333; padding: 24px; max-width: 440px; margin: 0 auto; border-radius: 8px; text-align: center; }
+            .header-badge { font-size: 11px; text-transform: uppercase; font-weight: bold; color: #008775; letter-spacing: 0.05em; }
+            .title { font-size: 18px; font-weight: bold; margin: 6px 0 2px; }
+            .qr-wrapper { margin: 12px auto; width: 180px; height: 180px; }
+            .batch-id { font-family: monospace; font-size: 15px; font-weight: bold; color: #008775; }
+            .details { text-align: left; margin-top: 14px; font-size: 13px; line-height: 1.6; border-top: 1px solid #ddd; padding-top: 10px; }
+            .url-box { font-family: monospace; font-size: 11px; color: #0284c7; word-break: break-all; margin-top: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="label-box">
+            <div class="header-badge">GMP Certified Pharmaceutical Provenance</div>
+            <div class="title">${verification.drugName} ${verification.dosage ? `(${verification.dosage})` : ''}</div>
+            <div style="font-size: 12px; color: #666;">Scan for immutable blockchain audit trail</div>
+            <div class="qr-wrapper">${qrSvg}</div>
+            <div class="batch-id">${verification.batchId}</div>
+            <div class="details">
+              <div><strong>Generic (API):</strong> ${verification.genericName}</div>
+              <div><strong>Manufacturer:</strong> ${verification.manufacturer.name}</div>
+              <div><strong>Mfg Date:</strong> ${new Date(verification.manufacturingDate).toLocaleDateString()}</div>
+              <div><strong>Expiry Date:</strong> ${new Date(verification.expiryDate).toLocaleDateString()}</div>
+              <div><strong>Status:</strong> ${verification.status}</div>
+              <div style="margin-top: 6px;"><strong>Public Verification URL:</strong></div>
+              <div class="url-box">${window.location.origin}/?verify=${verification.batchId}</div>
+            </div>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   return (
     <div style={{ maxWidth: '960px', margin: '0 auto', padding: '32px 16px' }}>
@@ -101,8 +166,8 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
         </div>
 
         {/* Demo Quick Select Buttons */}
-        <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Try sample batch:</span>
+        <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Try sample batches:</span>
           <button
             onClick={() => {
               setBatchIdInput('MED-20261015-A8F2K');
@@ -116,26 +181,62 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
         </div>
       </div>
 
-      {/* Error / Alert Display */}
-      {error && (
+      {/* Loading State Display */}
+      {loading && (
         <div
           className="glass-panel"
           style={{
-            padding: '20px',
+            padding: '40px',
+            textAlign: 'center',
+            marginBottom: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '16px',
+          }}
+        >
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              border: '3px solid rgba(0, 210, 180, 0.2)',
+              borderTopColor: '#00d2b4',
+              animation: 'spin 1s linear infinite',
+            }}
+          />
+          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+          <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#f8fafc' }}>
+            Querying MediTrace decentralized ledger &amp; verifying digital signatures...
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+            Checking smart contract provenance state and telemetry logs
+          </div>
+        </div>
+      )}
+
+      {/* Error / Alert Display */}
+      {error && !loading && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '24px',
             marginBottom: '24px',
             border: '1px solid rgba(239, 68, 68, 0.4)',
             background: 'rgba(239, 68, 68, 0.08)',
+            borderRadius: '12px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-            <span style={{ fontSize: '1.6rem' }}>⚠️</span>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+            <span style={{ fontSize: '1.8rem' }}>⚠️</span>
             <div>
-              <h3 style={{ color: '#f87171', fontSize: '1rem', marginBottom: '4px' }}>
-                Batch Verification Alert
+              <h3 style={{ color: '#f87171', fontSize: '1.05rem', marginBottom: '6px' }}>
+                Batch Verification Alert: Batch Not Verified
               </h3>
-              <p style={{ color: '#fca5a5', fontSize: '0.88rem' }}>{error}</p>
-              <div style={{ marginTop: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Warning: If you suspect counterfeit medicine, do not consume it. Immediately report the package to your pharmacy or regulatory authority.
+              <p style={{ color: '#fca5a5', fontSize: '0.9rem', lineHeight: 1.5 }}>{error}</p>
+              <div style={{ marginTop: '12px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                <strong>Consumer Safety Notice:</strong> If you suspect counterfeit medicine, do not consume it. Immediately report the package to your pharmacy or regulatory authority.
               </div>
             </div>
           </div>
@@ -143,30 +244,103 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
       )}
 
       {/* Verification Card Results */}
-      {verification && (
+      {verification && !loading && (
         <div className="glass-panel" style={{ padding: '28px', position: 'relative', overflow: 'hidden' }}>
-          {/* Recall Banner if Recalled */}
+          {/* Critical Recall Banner if Recalled */}
           {verification.isRecalled && (
             <div
               style={{
                 background: 'rgba(239, 68, 68, 0.2)',
-                border: '1px solid rgba(239, 68, 68, 0.5)',
+                border: '1px solid rgba(239, 68, 68, 0.6)',
+                borderRadius: '10px',
+                padding: '16px 20px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+              }}
+            >
+              <span style={{ fontSize: '2rem' }}>🛑</span>
+              <div>
+                <strong style={{ color: '#f87171', fontSize: '1.05rem' }}>
+                  SAFETY WARNING: THIS MEDICINE BATCH HAS BEEN RECALLED
+                </strong>
+                <div style={{ color: '#fca5a5', fontSize: '0.88rem', marginTop: '4px' }}>
+                  Reason: {verification.recallReason || 'Critical safety recall initiated by manufacturer or regulatory authority.'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Expired Medicine Warning */}
+          {verification.isExpired && (
+            <div
+              style={{
+                background: 'rgba(245, 158, 11, 0.15)',
+                border: '1px solid rgba(245, 158, 11, 0.5)',
                 borderRadius: '10px',
                 padding: '14px 18px',
-                marginBottom: '24px',
+                marginBottom: '20px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
               }}
             >
-              <span style={{ fontSize: '1.8rem' }}>🛑</span>
+              <span style={{ fontSize: '1.8rem' }}>⚠️</span>
               <div>
-                <strong style={{ color: '#f87171', fontSize: '1rem' }}>
-                  SAFETY WARNING: THIS MEDICINE BATCH HAS BEEN RECALLED
+                <strong style={{ color: '#fbbf24', fontSize: '0.98rem' }}>
+                  EXPIRED PRODUCT WARNING: THIS BATCH HAS EXPIRED
                 </strong>
-                <div style={{ color: '#fca5a5', fontSize: '0.85rem', marginTop: '2px' }}>
-                  Reason: {verification.recallReason || 'Critical safety recall initiated by manufacturer/regulator'}
+                <div style={{ color: '#fde68a', fontSize: '0.85rem', marginTop: '2px' }}>
+                  Batch expired on {new Date(verification.expiryDate).toLocaleDateString()}. Do not dispense or ingest expired pharmaceuticals.
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Suspicious Scan Velocity Telemetry Alert */}
+          {verification.scanTelemetry?.suspiciousScanAlert && (
+            <div
+              style={{
+                background: 'rgba(217, 119, 6, 0.15)',
+                border: '1px solid rgba(217, 119, 6, 0.5)',
+                borderRadius: '10px',
+                padding: '14px 18px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <span style={{ fontSize: '1.8rem' }}>📡</span>
+              <div>
+                <strong style={{ color: '#f59e0b', fontSize: '0.98rem' }}>
+                  SUSPICIOUS SCAN VELOCITY ALERT
+                </strong>
+                <div style={{ color: '#fde68a', fontSize: '0.85rem', marginTop: '2px' }}>
+                  {verification.scanTelemetry.message || `Detected ${verification.scanTelemetry.recentScanCount} scans within 5 minutes.`} Please verify physical holographic packaging seals against label cloning.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Incomplete Record Warning */}
+          {verification.incompleteRecord && (
+            <div
+              style={{
+                background: 'rgba(59, 130, 246, 0.12)',
+                border: '1px solid rgba(59, 130, 246, 0.4)',
+                borderRadius: '10px',
+                padding: '12px 16px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <span style={{ fontSize: '1.4rem' }}>ℹ️</span>
+              <div style={{ color: '#93c5fd', fontSize: '0.85rem' }}>
+                <strong>Provenance Note:</strong> This batch registration is genuine, but intermediate transit records have not yet been completed.
               </div>
             </div>
           )}
@@ -184,13 +358,13 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
             }}
           >
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <span
                   style={{
                     width: '12px',
                     height: '12px',
                     borderRadius: '50%',
-                    background: verification.isRecalled ? '#ef4444' : '#10b981',
+                    background: verification.isRecalled ? '#ef4444' : verification.isExpired ? '#f59e0b' : '#10b981',
                     boxShadow: verification.isRecalled ? '0 0 10px #ef4444' : '0 0 10px #10b981',
                   }}
                 />
@@ -199,18 +373,105 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
                 {verification.genericName} &bull; <strong style={{ color: '#e2e8f0' }}>{verification.dosage}</strong>
+                {verification.strength && <span> &bull; {verification.strength}</span>}
               </div>
             </div>
 
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>
-                Unified Batch ID
+            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>
+                  Canonical Batch ID
+                </div>
+                <div className="mono" style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--primary)' }}>
+                  {verification.batchId}
+                </div>
               </div>
-              <div className="mono" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary)' }}>
-                {verification.batchId}
-              </div>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowQrModal(!showQrModal)}
+                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+              >
+                {showQrModal ? 'Hide Packaging QR' : '📦 View Packaging QR'}
+              </button>
             </div>
           </div>
+
+          {/* Packaging QR Preview Section (Expandable) */}
+          {showQrModal && (
+            <div
+              style={{
+                margin: '20px 0',
+                padding: '20px',
+                background: 'rgba(15, 23, 42, 0.7)',
+                borderRadius: '12px',
+                border: '1px solid rgba(0, 210, 180, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '24px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div
+                style={{
+                  background: '#ffffff',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  width: '160px',
+                  height: '160px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg width="140" height="140" viewBox="0 0 200 200" fill="#000" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="10" y="10" width="50" height="50" fill="#070a12" rx="4" />
+                  <rect x="20" y="20" width="30" height="30" fill="#ffffff" rx="2" />
+                  <rect x="27" y="27" width="16" height="16" fill="#00d2b4" rx="2" />
+                  <rect x="140" y="10" width="50" height="50" fill="#070a12" rx="4" />
+                  <rect x="150" y="20" width="30" height="30" fill="#ffffff" rx="2" />
+                  <rect x="157" y="27" width="16" height="16" fill="#00d2b4" rx="2" />
+                  <rect x="10" y="140" width="50" height="50" fill="#070a12" rx="4" />
+                  <rect x="20" y="150" width="30" height="30" fill="#ffffff" rx="2" />
+                  <rect x="27" y="157" width="16" height="16" fill="#00d2b4" rx="2" />
+                  <rect x="70" y="15" width="12" height="12" fill="#070a12" />
+                  <rect x="90" y="15" width="12" height="12" fill="#070a12" />
+                  <rect x="115" y="15" width="12" height="12" fill="#070a12" />
+                  <rect x="75" y="75" width="14" height="14" fill="#00b89e" />
+                  <rect x="95" y="95" width="14" height="14" fill="#00d2b4" rx="2" />
+                </svg>
+              </div>
+
+              <div style={{ flex: 1, minWidth: '240px' }}>
+                <h4 style={{ color: '#00d2b4', fontSize: '0.95rem', marginBottom: '6px' }}>
+                  Canonical GS1/GMP Packaging QR Matrix
+                </h4>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-dim)', marginBottom: '8px' }}>
+                  Encoded canonical public verification link:
+                </div>
+                <div
+                  className="mono"
+                  style={{
+                    fontSize: '0.75rem',
+                    background: 'rgba(0,0,0,0.4)',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    color: 'var(--primary)',
+                    wordBreak: 'break-all',
+                    marginBottom: '12px',
+                  }}
+                >
+                  {window.location.origin}/?verify={verification.batchId}
+                </div>
+                <button
+                  className="btn btn-primary"
+                  onClick={handlePrintLabel}
+                  style={{ fontSize: '0.82rem', padding: '8px 16px' }}
+                >
+                  🖨️ Print GMP Packaging Label
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Key Facts Grid */}
           <div
@@ -224,7 +485,7 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
             <div style={{ background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Manufacturer</div>
               <div style={{ fontWeight: 600, fontSize: '0.92rem', marginTop: '4px' }}>{verification.manufacturer.name}</div>
-              <div style={{ fontSize: '0.72rem', color: '#34d399', marginTop: '2px' }}>✓ Licensed & Verified</div>
+              <div style={{ fontSize: '0.72rem', color: '#34d399', marginTop: '2px' }}>✓ Licensed &amp; Verified</div>
             </div>
 
             <div style={{ background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
@@ -248,7 +509,7 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
                 {new Date(verification.expiryDate).toLocaleDateString()}
               </div>
               <div style={{ fontSize: '0.72rem', color: verification.isExpired ? '#f87171' : '#34d399', marginTop: '2px' }}>
-                {verification.isExpired ? '⚠️ Expired Batch' : '✓ Good Shelf Life'}
+                {verification.isExpired ? '⚠️ Expired Batch' : '✓ Valid Shelf Life'}
               </div>
             </div>
 
@@ -262,18 +523,30 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
           {/* Blockchain Cryptographic Proof Badge */}
           <div
             style={{
-              padding: '14px 18px',
+              padding: '16px 20px',
               borderRadius: '10px',
               background: 'rgba(0, 210, 180, 0.05)',
-              border: '1px solid rgba(0, 210, 180, 0.2)',
+              border: '1px solid rgba(0, 210, 180, 0.25)',
               marginBottom: '28px',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ color: '#00d2b4', fontSize: '1.2rem' }}>⛓️</span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc' }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f8fafc' }}>
                   Smart Contract Provenance Seal Verified
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                    background: verification.blockchainVerification.onChain ? 'rgba(16, 185, 129, 0.2)' : 'rgba(14, 165, 233, 0.2)',
+                    color: verification.blockchainVerification.onChain ? '#34d399' : '#38bdf8',
+                    fontWeight: 700,
+                  }}
+                >
+                  {verification.blockchainVerification.onChain ? 'ON-CHAIN CONFIRMED' : 'STANDALONE LEDGER VERIFIED'}
                 </span>
               </div>
               <span className="mono" style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
@@ -281,8 +554,13 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
               </span>
             </div>
             {verification.blockchainVerification.txHash && (
-              <div className="mono" style={{ fontSize: '0.72rem', color: 'var(--primary)', marginTop: '4px', wordBreak: 'break-all' }}>
+              <div className="mono" style={{ fontSize: '0.75rem', color: 'var(--primary)', marginTop: '6px', wordBreak: 'break-all' }}>
                 Latest Ledger Tx: {verification.blockchainVerification.txHash}
+              </div>
+            )}
+            {verification.verifiedAt && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+                Verified at: {new Date(verification.verifiedAt).toLocaleString()}
               </div>
             )}
           </div>
@@ -302,3 +580,4 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
     </div>
   );
 };
+

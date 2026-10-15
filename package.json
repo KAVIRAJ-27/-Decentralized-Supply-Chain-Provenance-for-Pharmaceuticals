@@ -20,7 +20,7 @@
     "dev:backend": "npm run --workspace=backend dev",
     "dev:frontend": "npm run --workspace=frontend dev",
     "dev:mobile": "npm run --workspace=mobile dev",
-    "test:all": "npm run test:contracts && npm run --workspace=backend test"
+    "test:all": "npm run test:contracts && npm run --workspace=backend test:all"
   },
   "keywords": [
     "blockchain",

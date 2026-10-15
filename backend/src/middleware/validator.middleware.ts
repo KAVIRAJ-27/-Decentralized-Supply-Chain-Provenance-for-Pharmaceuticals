@@ -11,6 +11,8 @@ export function validateBatchIdParam(req: Request, res: Response, next: NextFunc
 
   if (!BATCH_ID_REGEX.test(batchId)) {
     return res.status(400).json({
+      verified: false,
+      batchId,
       error: `Invalid Batch ID format '${batchId}'. Must follow standardized pattern: MED-YYYYMMDD-XXXXX (e.g., MED-20261015-A8F2K)`,
       expectedFormat: 'MED-YYYYMMDD-XXXXX',
     });

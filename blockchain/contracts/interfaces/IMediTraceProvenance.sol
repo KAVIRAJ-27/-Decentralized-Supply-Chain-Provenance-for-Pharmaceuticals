@@ -12,7 +12,8 @@ interface IMediTraceProvenance {
         MANUFACTURER,
         DISTRIBUTOR,
         PHARMACY,
-        CONSUMER
+        CONSUMER,
+        HOSPITAL
     }
 
     enum BatchStatus {

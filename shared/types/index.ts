@@ -331,3 +331,5 @@ export interface ApiError {
   details?: any;
   timestamp: string;
 }
+
+export * from './permissions';

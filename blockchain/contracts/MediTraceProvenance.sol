@@ -34,6 +34,14 @@ contract MediTraceProvenance is IMediTraceProvenance {
         _;
     }
 
+    modifier onlyPharmacyOrHospital() {
+        require(
+            roles[msg.sender] == Role.PHARMACY || roles[msg.sender] == Role.HOSPITAL,
+            "MediTrace: Caller must be pharmacy or hospital"
+        );
+        _;
+    }
+
     modifier batchMustExist(string memory _batchId) {
         require(batchExists[_batchId], "MediTrace: Batch does not exist");
         _;
@@ -198,11 +206,15 @@ contract MediTraceProvenance is IMediTraceProvenance {
         require(batch.currentOwner == msg.sender, "MediTrace: Not current batch owner");
         require(!batch.isRecalled, "MediTrace: Recalled batch cannot be transferred");
         require(batch.status == BatchStatus.RECEIVED_BY_DISTRIBUTOR, "MediTrace: Batch not in distributor inventory");
-        require(roles[_pharmacy] == Role.PHARMACY, "MediTrace: Target is not a verified pharmacy/hospital");
+        require(
+            roles[_pharmacy] == Role.PHARMACY || roles[_pharmacy] == Role.HOSPITAL,
+            "MediTrace: Target is not a verified pharmacy or hospital"
+        );
 
+        Role recipientRole = roles[_pharmacy];
         batch.status = BatchStatus.IN_TRANSIT_TO_PHARMACY;
         batch.currentOwner = _pharmacy;
-        batch.currentOwnerRole = Role.PHARMACY;
+        batch.currentOwnerRole = recipientRole;
         batch.updatedAt = block.timestamp;
 
         batchHistory[_batchId].push(ProvenanceRecord({
@@ -227,7 +239,7 @@ contract MediTraceProvenance is IMediTraceProvenance {
         string memory _hospitalLocation,
         int256 _tempReading,
         string memory _notes
-    ) external onlyRole(Role.PHARMACY) batchMustExist(_batchId) {
+    ) external onlyPharmacyOrHospital batchMustExist(_batchId) {
         MedicineBatch storage batch = batches[_batchId];
         require(batch.currentOwner == msg.sender, "MediTrace: Batch not assigned to this pharmacy");
         require(batch.status == BatchStatus.IN_TRANSIT_TO_PHARMACY, "MediTrace: Batch not in transit to pharmacy");
@@ -239,20 +251,20 @@ contract MediTraceProvenance is IMediTraceProvenance {
             timestamp: block.timestamp,
             status: BatchStatus.RECEIVED_BY_PHARMACY,
             actor: msg.sender,
-            actorRole: Role.PHARMACY,
+            actorRole: roles[msg.sender],
             location: _hospitalLocation,
             temperatureCelsius: _tempReading,
             notes: _notes
         }));
 
-        emit BatchStatusUpdated(_batchId, BatchStatus.RECEIVED_BY_PHARMACY, msg.sender, Role.PHARMACY, _hospitalLocation);
+        emit BatchStatusUpdated(_batchId, BatchStatus.RECEIVED_BY_PHARMACY, msg.sender, roles[msg.sender], _hospitalLocation);
     }
 
     function dispenseMedicine(
         string memory _batchId,
         uint256 _dispenseQty,
         string memory _notes
-    ) external onlyRole(Role.PHARMACY) batchMustExist(_batchId) {
+    ) external onlyPharmacyOrHospital batchMustExist(_batchId) {
         MedicineBatch storage batch = batches[_batchId];
         require(batch.currentOwner == msg.sender, "MediTrace: Only holding pharmacy can dispense");
         require(!batch.isRecalled, "MediTrace: Cannot dispense recalled batch");
@@ -270,14 +282,48 @@ contract MediTraceProvenance is IMediTraceProvenance {
             timestamp: block.timestamp,
             status: BatchStatus.DISPENSED,
             actor: msg.sender,
-            actorRole: Role.PHARMACY,
+            actorRole: roles[msg.sender],
             location: entityNames[msg.sender],
             temperatureCelsius: 210,
             notes: _notes
         }));
 
         emit MedicineDispensed(_batchId, msg.sender, _dispenseQty);
-        emit BatchStatusUpdated(_batchId, batch.status, msg.sender, Role.PHARMACY, entityNames[msg.sender]);
+        emit BatchStatusUpdated(_batchId, batch.status, msg.sender, roles[msg.sender], entityNames[msg.sender]);
+    }
+
+    // ========================================================================
+    // General Provenance / Custody Event Recording
+    // ========================================================================
+
+    function recordCustodyEvent(
+        string memory _batchId,
+        BatchStatus _newStatus,
+        string memory _location,
+        int256 _tempReading,
+        string memory _notes
+    ) external batchMustExist(_batchId) {
+        MedicineBatch storage batch = batches[_batchId];
+        require(
+            msg.sender == admin || msg.sender == batch.currentOwner,
+            "MediTrace: Caller must be admin or current batch owner"
+        );
+        require(!batch.isRecalled, "MediTrace: Cannot record events on recalled batch");
+
+        batch.status = _newStatus;
+        batch.updatedAt = block.timestamp;
+
+        batchHistory[_batchId].push(ProvenanceRecord({
+            timestamp: block.timestamp,
+            status: _newStatus,
+            actor: msg.sender,
+            actorRole: roles[msg.sender],
+            location: _location,
+            temperatureCelsius: _tempReading,
+            notes: _notes
+        }));
+
+        emit BatchStatusUpdated(_batchId, _newStatus, msg.sender, roles[msg.sender], _location);
     }
 
     // ========================================================================
@@ -331,6 +377,16 @@ contract MediTraceProvenance is IMediTraceProvenance {
         batch = batches[_batchId];
         manufacturerName = entityNames[batch.manufacturer];
         historyCount = batchHistory[_batchId].length;
+    }
+
+    function isBatchRecalled(string memory _batchId)
+        external
+        view
+        batchMustExist(_batchId)
+        returns (bool isRecalled, string memory recallReason)
+    {
+        MedicineBatch storage batch = batches[_batchId];
+        return (batch.isRecalled, batch.recallReason);
     }
 
     function getProvenanceHistory(string memory _batchId)

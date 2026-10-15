@@ -8,11 +8,20 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "node -e \"console.log('Backend test suite ready')\""
+    "test": "node test/auth.test.js",
+    "test:admin": "node test/admin.test.js",
+    "test:auth": "node test/auth.test.js",
+    "test:manufacturer": "node test/manufacturer.test.js",
+    "test:blockchain": "node test/blockchain.test.js",
+    "test:qr": "node test/qr-verify.test.js",
+    "test:integration": "node test/integration.test.js",
+    "test:mobile": "node test/mobile-verification.test.js",
+    "test:all": "node test/admin.test.js && node test/auth.test.js && node test/manufacturer.test.js && node test/blockchain.test.js && node test/qr-verify.test.js && node test/integration.test.js && node test/mobile-verification.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "ethers": "^6.11.1",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2"
   },
