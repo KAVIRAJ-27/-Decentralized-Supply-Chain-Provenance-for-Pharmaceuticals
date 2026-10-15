@@ -30,16 +30,16 @@ router.post(
 router.post(
   '/:batchId/status',
   authenticate,
-  requireRole('MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY'),
+  requireRole('MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY', 'HOSPITAL'),
   validateBatchIdParam,
   updateBatchStatus
 );
 
-// 3. Dispense to end patient (Pharmacy only)
+// 3. Dispense to end patient (Pharmacy & Hospital)
 router.post(
   '/:batchId/dispense',
   authenticate,
-  requireRole('PHARMACY'),
+  requireRole('PHARMACY', 'HOSPITAL'),
   validateBatchIdParam,
   dispenseBatch
 );

@@ -5,7 +5,7 @@ export interface UserRecord {
   id: string;
   name: string;
   email: string;
-  role: 'ADMIN' | 'MANUFACTURER' | 'DISTRIBUTOR' | 'PHARMACY' | 'CONSUMER';
+  role: 'ADMIN' | 'MANUFACTURER' | 'DISTRIBUTOR' | 'PHARMACY' | 'HOSPITAL' | 'CONSUMER';
   organizationName: string;
   licenseNumber: string;
   walletAddress: string;

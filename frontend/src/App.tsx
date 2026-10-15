@@ -61,6 +61,9 @@ export const App: React.FC = () => {
         case 'PHARMACY':
           setActiveTab('pharmacy');
           break;
+        case 'HOSPITAL':
+          setActiveTab('hospital');
+          break;
         case 'ADMIN':
           setActiveTab('admin');
           break;
@@ -99,7 +102,7 @@ export const App: React.FC = () => {
         {activeTab === 'distributor' && (
           <DistributorPage session={session} onOpenLogin={() => setShowLoginModal(true)} />
         )}
-        {activeTab === 'pharmacy' && (
+        {(activeTab === 'pharmacy' || activeTab === 'hospital') && (
           <PharmacyPage session={session} onOpenLogin={() => setShowLoginModal(true)} />
         )}
         {activeTab === 'admin' && (

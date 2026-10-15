@@ -1,42 +1,91 @@
 /**
  * MediTrace — Core Shared Domain Models, Constants & API Contracts
  * 
+ * Version: 2.0.0 (Phase 2 Shared Foundation)
  * Shared across:
  * - Blockchain Smart Contracts (Solidity)
- * - Backend API (Node / Express / TypeScript)
+ * - Backend API (Node / Express / TypeScript / MongoDB)
  * - Management Website (React / Vite)
- * - Mobile QR Scanner (Mobile Web / React)
+ * - Mobile QR Scanner (Mobile Web / PWA Engine)
  */
 
 // ============================================================================
-// 1. Participant Roles
+// 1. Participant Roles & Organizations
 // ============================================================================
 
-export type UserRole = 'ADMIN' | 'MANUFACTURER' | 'DISTRIBUTOR' | 'PHARMACY' | 'CONSUMER';
+/**
+ * Authenticated system roles.
+ * Note: Public verification is a zero-login access mode, not an authenticated role.
+ */
+export type UserRole = 'ADMIN' | 'MANUFACTURER' | 'DISTRIBUTOR' | 'PHARMACY' | 'HOSPITAL' | 'CONSUMER';
 
 export enum RoleEnum {
   ADMIN = 'ADMIN',
   MANUFACTURER = 'MANUFACTURER',
   DISTRIBUTOR = 'DISTRIBUTOR',
   PHARMACY = 'PHARMACY',
-  CONSUMER = 'CONSUMER',
+  HOSPITAL = 'HOSPITAL',
+  CONSUMER = 'CONSUMER', // Zero-login public inspection mode
 }
 
-export interface UserProfile {
-  id: string;
+export type OrganizationType = 'MANUFACTURER' | 'DISTRIBUTOR' | 'PHARMACY' | 'HOSPITAL';
+
+export interface Organization {
+  organizationId: string;
   name: string;
-  email: string;
-  role: UserRole;
-  organizationName: string;
-  licenseNumber?: string;
+  type: OrganizationType;
+  address: string;
+  contactEmail: string;
+  licenseNumber: string;
   walletAddress?: string;
+  status: 'ACTIVE' | 'SUSPENDED' | 'PENDING';
   createdAt: string;
 }
 
+export interface User {
+  userId: string;
+  organizationId: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+  // passwordHash is strictly server-side and excluded in API transfers
+}
+
+export interface UserProfile extends User {
+  organizationName?: string;
+  licenseNumber?: string;
+  walletAddress?: string;
+}
+
 // ============================================================================
-// 2. Batch Lifecycle & Delivery Status
+// 2. Delivery & Supply Chain Logistics Statuses
 // ============================================================================
 
+/**
+ * Standardized Delivery Lifecycle Statuses
+ * CRITICAL RULE: A delivery never becomes DELIVERED simply upon QR scanning.
+ * The intended receiving organization must explicitly confirm receipt.
+ */
+export type DeliveryStatus =
+  | 'PENDING'
+  | 'DISPATCHED'
+  | 'IN_TRANSIT'
+  | 'DELIVERED'
+  | 'CANCELLED';
+
+export enum DeliveryStatusEnum {
+  PENDING = 'PENDING',
+  DISPATCHED = 'DISPATCHED',
+  IN_TRANSIT = 'IN_TRANSIT',
+  DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED',
+}
+
+/**
+ * Batch Lifecycle Status (End-to-end custody provenance)
+ */
 export type BatchStatus =
   | 'MANUFACTURED'
   | 'IN_TRANSIT_TO_DISTRIBUTOR'
@@ -57,17 +106,18 @@ export enum BatchStatusEnum {
 }
 
 // ============================================================================
-// 3. Shared Batch Identifier Specification
+// 3. Shared Batch Identifier Standard
 // ============================================================================
 
 /**
- * Shared Batch ID standard format: MED-YYYYMMDD-XXXXX
- * Example: MED-20261015-8A7B1
+ * Standardized Batch Identifier format: MED-YYYYMMDD-XXXXX
+ * Example: MED-20261015-A8F2K
  */
 export const BATCH_ID_REGEX = /^MED-\d{8}-[A-Z0-9]{4,8}$/;
 
 export function isValidBatchId(batchId: string): boolean {
-  return BATCH_ID_REGEX.test(batchId);
+  if (!batchId) return false;
+  return BATCH_ID_REGEX.test(batchId.trim().toUpperCase());
 }
 
 export function generateBatchId(): string {
@@ -80,11 +130,25 @@ export function generateBatchId(): string {
 }
 
 // ============================================================================
-// 4. Medicine Batch Data Models
+// 4. Master Domain Entities
 // ============================================================================
 
+export interface Medicine {
+  medicineId: string;
+  name: string;
+  genericName: string;
+  description: string;
+  manufacturerOrganizationId: string;
+  dosageForm: string; // e.g. "Tablet", "Injection", "Vial", "Capsule"
+  strength: string;   // e.g. "625mg", "100mg/mL"
+  createdAt: string;
+}
+
 export interface MedicineBatch {
-  batchId: string; // Unified Batch Identifier
+  batchId: string; // Universal Batch ID (MED-YYYYMMDD-XXXXX)
+  medicineId?: string;
+  manufacturerOrganizationId?: string;
+  batchNumber?: string;
   drugName: string;
   genericName: string;
   dosage: string;
@@ -100,16 +164,79 @@ export interface MedicineBatch {
   currentOwnerAddress: string;
   isRecalled: boolean;
   recallReason?: string;
+  qrCodeUrl?: string;
   blockchainTxHash?: string;
   blockNumber?: number;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface SupplyChainTransaction {
+  transactionId: string;
+  batchId: string;
+  fromOrganizationId: string;
+  toOrganizationId: string;
+  type: 'DISPATCH' | 'TRANSFER' | 'RECEIPT' | 'DISPENSE' | 'RECALL';
+  quantity: number;
+  status: 'INITIATED' | 'COMPLETED' | 'REJECTED';
+  createdAt: string;
+}
+
+export interface Delivery {
+  deliveryId: string;
+  transactionId?: string;
+  batchId: string;
+  fromOrganizationId: string;
+  toOrganizationId: string;
+  quantity: number;
+  dispatchDate: string;
+  expectedDeliveryDate?: string;
+  status: DeliveryStatus;
+  location: string;
+  temperatureCelsius?: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface ReceiptConfirmation {
+  confirmationId: string;
+  deliveryId: string;
+  receivedByUserId: string;
+  receivedQuantity: number;
+  receivedDate: string;
+  remarks?: string;
+  createdAt: string;
+}
+
+export interface BatchHistory {
+  historyId: string;
+  batchId: string;
+  eventType: string;
+  quantity: number;
+  location: string;
+  eventDate: string;
+  recordedByUserId: string;
+  transactionHash?: string;
+  createdAt: string;
+}
+
+export interface BlockchainRecord {
+  recordId: string;
+  batchId: string;
+  eventType: string;
+  fromOrganizationId?: string;
+  toOrganizationId?: string;
+  quantity: number;
+  blockNumber: number;
+  transactionHash: string;
+  timestamp: string;
+}
+
+// Backward-compatibility alias
 export interface CustodyEvent {
   id: string;
   batchId: string;
-  timestamp: string; // ISO 8601
+  timestamp: string;
   action: string;
   status: BatchStatus;
   actorRole: UserRole;
@@ -122,15 +249,20 @@ export interface CustodyEvent {
 }
 
 // ============================================================================
-// 5. Public Verification Contract (No Authentication Required)
+// 5. Sanitized Public Verification Response (Zero-Login / Zero-Leakage)
 // ============================================================================
 
-export interface PublicVerificationResponse {
+/**
+ * Public response contract: Strictly separates publicly permitted verification data
+ * from internal database attributes (no emails, passwords, pricing, or internal warehouse notes).
+ */
+export interface PublicBatchVerificationResponse {
   verified: boolean;
   batchId: string;
   drugName: string;
   genericName: string;
   dosage: string;
+  status: BatchStatus;
   manufacturer: {
     name: string;
     verified: boolean;
@@ -141,34 +273,61 @@ export interface PublicVerificationResponse {
   isExpired: boolean;
   isRecalled: boolean;
   recallReason?: string;
-  status: BatchStatus;
   currentHandler: {
     role: UserRole;
     name: string;
   };
   provenanceHistory: Array<{
+    id?: string;
     timestamp: string;
     action: string;
+    status: BatchStatus;
     location: string;
     actorRole: UserRole;
-    txHash?: string;
+    actorName: string;
+    temperatureCelsius?: number;
+    blockchainTxHash?: string;
   }>;
   blockchainVerification: {
     onChain: boolean;
     contractAddress: string;
     lastTxHash?: string;
+    blockNumber?: number;
+    integrityCheck: string;
   };
 }
+
+// Alias for client consumption
+export type PublicVerificationResponse = PublicBatchVerificationResponse;
 
 // ============================================================================
 // 6. QR Code Payload Specification
 // ============================================================================
 
 export interface QrCodePayload {
-  v: number;              // Schema version (e.g., 1)
-  batchId: string;        // Shared Batch ID
-  drug: string;           // Drug Name
+  v: number;              // Schema version (e.g., 2)
+  batchId: string;        // Universal Batch ID (MED-YYYYMMDD-XXXXX)
+  drug: string;           // Commercial name
   mfgDate: string;        // YYYY-MM-DD
   expDate: string;        // YYYY-MM-DD
-  verifyUrl: string;      // Public URL to verify without login
+  verifyUrl: string;      // Canonical public verify URL
+}
+
+// ============================================================================
+// 7. Standard API Response Envelopes
+// ============================================================================
+
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+  timestamp: string;
+}
+
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: any;
+  timestamp: string;
 }

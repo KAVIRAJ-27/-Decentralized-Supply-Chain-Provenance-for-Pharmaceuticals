@@ -31,6 +31,11 @@ export const RoleBadge: React.FC<Props> = ({ role }) => {
       bg = 'rgba(16, 185, 129, 0.12)';
       border = 'rgba(16, 185, 129, 0.3)';
       break;
+    case 'HOSPITAL':
+      color = '#06b6d4';
+      bg = 'rgba(6, 182, 212, 0.12)';
+      border = 'rgba(6, 182, 212, 0.3)';
+      break;
     case 'CONSUMER':
       color = '#a855f7';
       bg = 'rgba(168, 85, 247, 0.12)';

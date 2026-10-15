@@ -32,6 +32,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/batches', batchRoutes);
 app.use('/api/verify', verifyRoutes); // Public verification without login
+app.use('/api/public/verify', verifyRoutes); // Standard public verification alias
 app.use('/api/stats', statsRoutes);
 
 // Global Error Handler
