@@ -93,6 +93,12 @@ export interface BatchRecord {
   isRecalled: boolean;
   recallReason?: string;
   qrCodeUrl?: string;
+  digitalSignature?: {
+    signature: string;
+    algorithm: string;
+    keyId: string;
+    signedAt: string;
+  };
   blockchainTxHash?: string;
   blockNumber?: number;
   createdAt: string;
@@ -920,6 +926,16 @@ class DatabaseService {
     ).length;
   }
 
+  getUniqueScanIpCount(batchId: string, windowMinutes: number = 5): number {
+    if (!this.data.scanLogs) return 0;
+    const cutoff = Date.now() - windowMinutes * 60 * 1000;
+    const logs = this.data.scanLogs.filter(
+      (s) => s.batchId.toUpperCase() === batchId.trim().toUpperCase() && new Date(s.timestamp).getTime() >= cutoff
+    );
+    const uniqueIps = new Set(logs.map((l) => l.ipHash));
+    return uniqueIps.size;
+  }
+
   getTotalScanCount(batchId: string): number {
     if (!this.data.scanLogs) return 0;
     return this.data.scanLogs.filter(
@@ -931,6 +947,84 @@ class DatabaseService {
     if (!this.data.scanLogs) return [];
     if (!batchId) return [...this.data.scanLogs];
     return this.data.scanLogs.filter((s) => s.batchId.toUpperCase() === batchId.trim().toUpperCase());
+  }
+
+  /**
+   * Generates a cryptographically secure, collision-free batch identifier.
+   */
+  generateUniqueBatchId(): string {
+    const d = new Date();
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const suffix = crypto.randomBytes(3).toString('hex').substring(0, 5).toUpperCase();
+      const candidate = `MED-${yyyy}${mm}${dd}-${suffix}`;
+      if (!this.findBatchById(candidate)) {
+        return candidate;
+      }
+    }
+
+    const fallbackSuffix = crypto.randomBytes(4).toString('hex').substring(0, 6).toUpperCase();
+    return `MED-${yyyy}${mm}${dd}-${fallbackSuffix}`;
+  }
+
+  /**
+   * Evaluates scan patterns and returns risk assessment (alerting rather than false proof).
+   */
+  getScanTelemetryAssessment(batchId: string): {
+    suspiciousScanAlert: boolean;
+    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+    recentScans5m: number;
+    recentScans1h: number;
+    uniqueIps5m: number;
+    totalScans: number;
+    riskFactors: string[];
+    advisory?: string;
+  } {
+    const recentScans5m = this.getRecentScanCount(batchId, 5);
+    const recentScans1h = this.getRecentScanCount(batchId, 60);
+    const uniqueIps5m = this.getUniqueScanIpCount(batchId, 5);
+    const totalScans = this.getTotalScanCount(batchId);
+
+    const riskFactors: string[] = [];
+    let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+
+    if (recentScans5m > 10) {
+      riskFactors.push('HIGH_SCAN_VELOCITY_5M');
+      riskLevel = 'MEDIUM';
+    }
+
+    if (recentScans1h > 35) {
+      riskFactors.push('ELEVATED_HOURLY_VOLUME');
+      riskLevel = 'MEDIUM';
+    }
+
+    if (uniqueIps5m >= 4 && recentScans5m >= 8) {
+      riskFactors.push('MULTI_LOCATION_SIMULTANEOUS_BURST');
+      riskLevel = 'HIGH';
+    }
+
+    const suspiciousScanAlert = riskFactors.length > 0;
+    let advisory: string | undefined;
+
+    if (riskLevel === 'HIGH') {
+      advisory = 'Simultaneous scanning from multiple distinct locations detected. Check physical packaging holographic seals against potential QR cloning.';
+    } else if (riskLevel === 'MEDIUM') {
+      advisory = 'Elevated scan frequency detected within a short timeframe. Verify physical packaging tamper seals.';
+    }
+
+    return {
+      suspiciousScanAlert,
+      riskLevel,
+      recentScans5m,
+      recentScans1h,
+      uniqueIps5m,
+      totalScans,
+      riskFactors,
+      advisory,
+    };
   }
 
   // ==========================================================================

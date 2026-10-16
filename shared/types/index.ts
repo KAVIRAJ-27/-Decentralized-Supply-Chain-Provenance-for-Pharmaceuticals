@@ -120,13 +120,50 @@ export function isValidBatchId(batchId: string): boolean {
   return BATCH_ID_REGEX.test(batchId.trim().toUpperCase());
 }
 
+export interface BatchDigitalSignature {
+  signature: string;
+  algorithm: string;
+  keyId: string;
+  signedAt: string;
+}
+
+export interface CryptographicProof {
+  verified: boolean;
+  algorithm: string;
+  keyId: string;
+  verifiedAt: string;
+  error?: string;
+}
+
+export interface ScanTelemetryRisk {
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  suspiciousScanAlert: boolean;
+  recentScanCount: number;
+  recent1hScans?: number;
+  totalScanCount: number;
+  uniqueIpCount?: number;
+  flags?: string[];
+  message?: string;
+}
+
 export function generateBatchId(): string {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
-  return `MED-${year}${month}${day}-${randomSuffix}`;
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(now.getUTCDate()).padStart(2, '0');
+
+  let randomHex = '';
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(4);
+    globalThis.crypto.getRandomValues(bytes);
+    randomHex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .substring(0, 5)
+      .toUpperCase();
+  } else {
+    randomHex = Math.random().toString(36).substring(2, 7).toUpperCase();
+  }
+  return `MED-${year}${month}${day}-${randomHex}`;
 }
 
 // ============================================================================
@@ -165,6 +202,7 @@ export interface MedicineBatch {
   isRecalled: boolean;
   recallReason?: string;
   qrCodeUrl?: string;
+  digitalSignature?: BatchDigitalSignature;
   blockchainTxHash?: string;
   blockNumber?: number;
   createdAt: string;
@@ -292,9 +330,16 @@ export interface PublicBatchVerificationResponse {
     onChain: boolean;
     contractAddress: string;
     lastTxHash?: string;
+    txHash?: string;
     blockNumber?: number;
     integrityCheck: string;
+    onChainStatus?: string;
   };
+  cryptographicProof?: CryptographicProof;
+  scanTelemetry?: ScanTelemetryRisk;
+  warnings?: string[];
+  incompleteRecord?: boolean;
+  verifiedAt?: string;
 }
 
 // Alias for client consumption

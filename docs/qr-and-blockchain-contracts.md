@@ -7,38 +7,51 @@
 
 ## 1. Standardized QR Code Convention
 
-### A. Universal Batch Identifier
-Every pharmaceutical batch produced is stamped with a single, immutable, and stable identifier:
+### A. Cryptographically Secure Universal Batch Identifier
+Every pharmaceutical batch produced is stamped with a single, immutable, and cryptographically unpredictable identifier:
 - **Identifier Pattern:** `MED-YYYYMMDD-XXXXX`
 - **Regex Validation:** `/^MED-\d{8}-[A-Z0-9]{4,8}$/`
-- **Examples:** `MED-20261015-A8F2K`, `MED-20261015-00101`
+- **Entropy & Generation:** Node.js built-in `crypto.randomBytes(3)` CSPRNG generating high-entropy suffixes (over 1,000,000 combinations per calendar day) combined with database collision resistance loops. Sequential numbers, timestamps alone, or ordinary Math.random() are strictly prohibited.
+- **Examples:** `MED-20261016-A8F2K`, `MED-20261016-9B3C1`
 
 ### B. Single QR Life Throughout the Entire Supply Chain
 1. **Zero Regenerations:** The same batch QR code printed on the physical packaging at the manufacturing facility travels with the medication through distributors, warehouses, transport fleets, hospital pharmacies, and ultimately to the patient.
-2. **No Per-Delivery Codes:** Intermediary distributors or couriers must **not** generate new batch QR codes for their leg of the journey. Custody handoffs are recorded digitally against the original immutable `batchId`.
-3. **No Confidential Data in QR Payload:**
-   - The QR code contains only the public canonical verification URL and basic serialization headers.
-   - It **never** contains wholesale pricing, trade secrets, patient IDs, driver names, or internal access tokens.
-4. **Canonical URL Format:**
+2. **Post-Save Generation:** QR codes are generated strictly after the batch record and its cryptographic digital signature are persistently saved in the database.
+3. **No Per-Delivery Codes:** Intermediary distributors or couriers must **not** generate new batch QR codes for their leg of the journey. Custody handoffs are recorded digitally against the original immutable `batchId`.
+4. **No Confidential Data in QR Payload:**
+   - The QR code contains strictly the public canonical verification URL.
+   - It **never** contains wholesale pricing, trade secrets, patient IDs, driver names, internal stock levels, private keys, or internal access tokens.
+5. **Canonical URL Format:**
    ```text
-   https://meditrace.network/verify/{batchId}
+   https://YOUR-VERIFICATION-DOMAIN/verify/{batchId}
    ```
-   *Local Development Example:*
+   *Development / Local Example:*
    ```text
-   http://localhost:5173/?verify=MED-20261015-A8F2K
+   http://localhost:5173/?verify=MED-20261016-A8F2K
    ```
 
-### C. Standardized QR Code JSON Payload Schema (`QrCodePayload`)
-```typescript
-export interface QrCodePayload {
-  v: number;          // Schema version (e.g. 2)
-  batchId: string;    // Standardized Batch Identifier (e.g. "MED-20261015-A8F2K")
-  drug: string;       // Commercial Drug Name (e.g. "Amoxicillin Clavulanate")
-  mfgDate: string;    // YYYY-MM-DD
-  expDate: string;    // YYYY-MM-DD
-  verifyUrl: string;  // Public verification endpoint URL
-}
-```
+### C. Cryptographic Tamper-Evident Digital Signatures
+To guarantee tamper evidence against off-chain tampering or man-in-the-middle manipulation:
+1. **Algorithm:** HMAC-SHA256 over a canonical representation of the batch metadata (`batchId:drugName:manufacturerOrgId:mfgDate:expDate:quantity`).
+2. **Key Rotation (`keyId`):** Digital signatures embed a key identifier (e.g. `key-2026-v1`) to facilitate zero-downtime key rotation.
+3. **Timing-Safe Comparison:** Signatures are validated using Node.js `crypto.timingSafeEqual` to eliminate timing side-channel attacks.
+4. **Altered Metadata Detection:** Any modification to formulation, dosage, or expiry date invalidates the signature and triggers a `SIGNATURE_TAMPER_DETECTED` alert.
+
+### D. ISO/IEC 18004 Scannable QR Matrix Specification
+1. **Error Correction Level:** Level 'H' (High), recovering up to 30% data loss due to label scratching, moisture, or warehouse tears.
+2. **Quiet Zone:** Minimum 4-module quiet zone margin on all borders.
+3. **Contrast:** Pure dark modules (`#000000`) on solid light background (`#FFFFFF`).
+4. **Export Formats:**
+   - High-precision vector SVG for scalable web rendering and industrial laser printers.
+   - 300-DPI label-grade Base64 PNG Data URL for high-resolution packaging label printing.
+
+### E. Telemetry & Counterfeit Clone Risk Assessment
+Scan events are monitored server-side with strict privacy safeguards (no consumer personal information recorded):
+1. **Velocity Alerting:** >10 scans in 5 minutes triggers `SUSPICIOUS_SCAN_VELOCITY`.
+2. **Volume Alerting:** >35 scans in 1 hour triggers `ELEVATED_HOURLY_VOLUME`.
+3. **Multi-Location Anomaly:** >=4 distinct IP addresses scanning within 5 minutes triggers `MULTI_LOCATION_SIMULTANEOUS_BURST`.
+4. **Rate Limiting:** Public verification requests are rate-limited to 60 requests per minute per IP to protect against enumeration attacks.
+5. **Risk Classification:** Telemetry alerts are treated as risk advisories (recommending physical tamper seal inspection), not definitive proof of counterfeit medicine.
 
 ---
 

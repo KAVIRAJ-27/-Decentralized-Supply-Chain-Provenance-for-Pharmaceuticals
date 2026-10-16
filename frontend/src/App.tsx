@@ -4,6 +4,7 @@ import { PublicVerifyPage } from './pages/PublicVerifyPage';
 import { ManufacturerPage } from './pages/ManufacturerPage';
 import { DistributorPage } from './pages/DistributorPage';
 import { PharmacyPage } from './pages/PharmacyPage';
+import { HospitalPage } from './pages/HospitalPage';
 import { AdminPage } from './pages/AdminPage';
 import { LoginPage } from './pages/LoginPage';
 import { AccessDenied } from './components/AccessDenied';
@@ -205,8 +206,9 @@ export const App: React.FC = () => {
       case 'distributor':
         return <DistributorPage session={session} onOpenLogin={() => navigateTo('login')} />;
       case 'pharmacy':
-      case 'hospital':
         return <PharmacyPage session={session} onOpenLogin={() => navigateTo('login')} />;
+      case 'hospital':
+        return <HospitalPage session={session} onOpenLogin={() => navigateTo('login')} />;
       default:
         return <PublicVerifyPage initialBatchId={urlBatchId} />;
     }

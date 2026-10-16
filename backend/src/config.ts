@@ -14,4 +14,7 @@ export const config = {
   blockchainRpcUrl: process.env.BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:8545',
   contractAddress: process.env.MEDITRACE_CONTRACT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3',
   databaseFile: process.env.DATABASE_FILE || path.resolve(process.cwd(), './data/meditrace.json'),
+  verificationBaseUrl: process.env.VERIFICATION_BASE_URL || 'http://localhost:5173',
+  batchSigningKey: process.env.BATCH_SIGNING_KEY || process.env.JWT_SECRET || 'meditrace_secure_batch_signing_key_v1_2026',
+  batchSigningKeyId: process.env.BATCH_SIGNING_KEY_ID || 'v1-hmac-sha256',
 };

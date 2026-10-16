@@ -101,68 +101,28 @@ export const Navbar: React.FC<Props> = ({
           >
             🔍 Public Verify
           </button>
-
-          <button
-            onClick={() => setActiveTab('manufacturer')}
-            className="btn btn-secondary"
-            style={{
-              fontSize: '0.82rem',
-              padding: '7px 14px',
-              background: activeTab === 'manufacturer' ? 'rgba(0, 210, 180, 0.15)' : 'transparent',
-              borderColor: activeTab === 'manufacturer' ? 'var(--primary)' : 'transparent',
-              color: activeTab === 'manufacturer' ? 'var(--primary)' : 'var(--text-muted)',
-            }}
-          >
-            🏭 Manufacturer
-          </button>
-
-          <button
-            onClick={() => setActiveTab('distributor')}
-            className="btn btn-secondary"
-            style={{
-              fontSize: '0.82rem',
-              padding: '7px 14px',
-              background: activeTab === 'distributor' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
-              borderColor: activeTab === 'distributor' ? 'var(--accent-blue)' : 'transparent',
-              color: activeTab === 'distributor' ? 'var(--accent-blue)' : 'var(--text-muted)',
-            }}
-          >
-            🚚 Distributor
-          </button>
-
-          <button
-            onClick={() => setActiveTab('pharmacy')}
-            className="btn btn-secondary"
-            style={{
-              fontSize: '0.82rem',
-              padding: '7px 14px',
-              background: activeTab === 'pharmacy' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-              borderColor: activeTab === 'pharmacy' ? 'var(--accent-emerald)' : 'transparent',
-              color: activeTab === 'pharmacy' ? 'var(--accent-emerald)' : 'var(--text-muted)',
-            }}
-          >
-            🏥 Pharmacy / Hospital
-          </button>
-
-          <button
-            onClick={() => setActiveTab('admin')}
-            className="btn btn-secondary"
-            style={{
-              fontSize: '0.82rem',
-              padding: '7px 14px',
-              background: activeTab === 'admin' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
-              borderColor: activeTab === 'admin' ? 'var(--accent-amber)' : 'transparent',
-              color: activeTab === 'admin' ? 'var(--accent-amber)' : 'var(--text-muted)',
-            }}
-          >
-            ⚖️ Admin Console
-          </button>
         </nav>
 
         {/* User Session / Switcher */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {session ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  const rolePortal = session.user.role.toLowerCase();
+                  setActiveTab(rolePortal);
+                }}
+                className="btn btn-secondary"
+                style={{
+                  fontSize: '0.8rem',
+                  padding: '6px 12px',
+                  background: activeTab !== 'verify' ? 'rgba(0, 210, 180, 0.15)' : 'transparent',
+                  borderColor: activeTab !== 'verify' ? 'var(--primary)' : 'var(--border-color)',
+                  color: activeTab !== 'verify' ? 'var(--primary)' : 'var(--text-main)',
+                }}
+              >
+                📊 Dashboard
+              </button>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{session.user.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end', marginTop: '2px' }}>

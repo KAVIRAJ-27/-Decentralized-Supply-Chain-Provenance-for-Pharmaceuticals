@@ -52,6 +52,12 @@ export interface MedicineBatch {
   isRecalled: boolean;
   recallReason?: string;
   qrCodeUrl?: string;
+  digitalSignature?: {
+    signature: string;
+    algorithm: string;
+    keyId: string;
+    signedAt: string;
+  };
   blockchainTxHash?: string;
   blockNumber?: number;
   createdAt: string;
@@ -117,10 +123,21 @@ export interface PublicVerificationResponse {
     integrityCheck: string;
     onChainStatus?: string;
   };
+  cryptographicProof?: {
+    verified: boolean;
+    algorithm: string;
+    keyId: string;
+    verifiedAt: string;
+    error?: string;
+  };
   scanTelemetry?: {
+    riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
     suspiciousScanAlert: boolean;
     recentScanCount: number;
+    recent1hScans?: number;
     totalScanCount: number;
+    uniqueIpCount?: number;
+    flags?: string[];
     message?: string;
   };
   warnings?: string[];

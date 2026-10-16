@@ -19,11 +19,13 @@
     "test:all": "node test/admin.test.js && node test/auth.test.js && node test/manufacturer.test.js && node test/blockchain.test.js && node test/qr-verify.test.js && node test/integration.test.js && node test/mobile-verification.test.js"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ethers": "^6.11.1",
     "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

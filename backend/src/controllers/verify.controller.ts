@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { db } from '../services/db.service';
 import { config } from '../config';
 import { blockchainService } from '../services/blockchain.service';
-import { BATCH_ID_REGEX } from '../services/qr.service';
+import { BATCH_ID_REGEX, QrService } from '../services/qr.service';
 
 /**
  * Public Batch Verification Controller
@@ -38,14 +38,13 @@ export async function verifyBatchPublic(req: Request, res: Response) {
     });
   }
 
-  // 3. Scan Logging & Velocity Analysis (Telemetry for counterfeit clone detection)
+  // 3. Scan Logging & Velocity/Pattern Analysis (Risk alerts for counterfeit clone detection)
   const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '127.0.0.1';
   const userAgent = req.headers['user-agent'] as string | undefined;
   db.logScan(batchId, clientIp, userAgent);
 
-  const recentScanCount = db.getRecentScanCount(batchId, 5);
-  const totalScanCount = db.getTotalScanCount(batchId);
-  const suspiciousScanAlert = recentScanCount > 10;
+  const scanAssessment = db.getScanTelemetryAssessment(batchId);
+  const suspiciousScanAlert = scanAssessment.suspiciousScanAlert;
 
   // 4. Expiry, Recall & Completeness Status
   const now = Date.now();
@@ -57,12 +56,23 @@ export async function verifyBatchPublic(req: Request, res: Response) {
   if (batch.isRecalled) warnings.push('RECALLED_BATCH');
   if (isExpired) warnings.push('EXPIRED_BATCH');
   if (incompleteRecord) warnings.push('INCOMPLETE_RECORD');
-  if (suspiciousScanAlert) warnings.push('SUSPICIOUS_SCAN_VELOCITY');
+  if (suspiciousScanAlert) {
+    warnings.push('SUSPICIOUS_SCAN_VELOCITY');
+    if (scanAssessment.riskFactors.includes('MULTI_LOCATION_SIMULTANEOUS_BURST')) {
+      warnings.push('MULTI_LOCATION_SIMULTANEOUS_BURST');
+    }
+  }
 
-  // 5. Blockchain Provenance Check (Non-blocking, resilient against RPC node offline)
+  // 5. Cryptographic Digital Signature Verification (Detects off-chain DB tampering)
+  const signatureVerification = QrService.verifyBatchSignature(batch);
+  if (!signatureVerification.valid) {
+    warnings.push('SIGNATURE_TAMPER_DETECTED');
+  }
+
+  // 6. Blockchain Provenance Check (Non-blocking, resilient against RPC node offline)
   let onChain = false;
   let onChainStatus = 'STANDALONE_VERIFIED';
-  let integrityCheck = 'PASSED_OFFCHAIN_IMMUTABILITY';
+  let integrityCheck = 'OFFCHAIN_IMMUTABILITY_VERIFIED';
   let blockchainTxHash = batch.blockchainTxHash;
   let blockNumber = batch.blockNumber;
 
@@ -80,15 +90,19 @@ export async function verifyBatchPublic(req: Request, res: Response) {
         integrityCheck = 'MISMATCH_DETECTED';
         warnings.push('BLOCKCHAIN_RECORD_MISMATCH');
       }
+    } else {
+      onChain = false;
+      onChainStatus = 'STANDALONE_VERIFIED';
+      integrityCheck = 'OFFCHAIN_ONLY_PROVENANCE';
     }
   } catch (err: any) {
-    // If local Hardhat node is offline or pending sync, preserve DB-verified status
+    // If local Hardhat node is offline or pending sync, report standalone verified
     onChain = false;
     onChainStatus = 'STANDALONE_VERIFIED';
-    integrityCheck = 'PASSED_OFFCHAIN_IMMUTABILITY';
+    integrityCheck = 'OFFCHAIN_RECORD_VERIFIED';
   }
 
-  // 6. Construct Privacy-Safe Response
+  // 7. Construct Privacy-Safe Response
   const publicVerification = {
     verified: true,
     batchId: batch.batchId,
@@ -133,13 +147,22 @@ export async function verifyBatchPublic(req: Request, res: Response) {
       integrityCheck,
       onChainStatus,
     },
+    cryptographicProof: {
+      verified: signatureVerification.valid,
+      algorithm: signatureVerification.algorithm,
+      keyId: signatureVerification.keyId,
+      verifiedAt: signatureVerification.verifiedAt,
+      error: signatureVerification.error,
+    },
     scanTelemetry: {
+      riskLevel: scanAssessment.riskLevel,
       suspiciousScanAlert,
-      recentScanCount,
-      totalScanCount,
-      message: suspiciousScanAlert
-        ? 'High scan frequency detected within a short timeframe. Verify physical packaging tamper seals.'
-        : undefined,
+      recentScanCount: scanAssessment.recentScans5m,
+      recent1hScans: scanAssessment.recentScans1h,
+      totalScanCount: scanAssessment.totalScans,
+      uniqueIpCount: scanAssessment.uniqueIps5m,
+      flags: scanAssessment.riskFactors,
+      message: scanAssessment.advisory,
     },
     warnings,
     incompleteRecord,

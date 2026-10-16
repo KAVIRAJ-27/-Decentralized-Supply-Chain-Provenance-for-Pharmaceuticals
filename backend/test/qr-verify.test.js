@@ -481,6 +481,246 @@ async function runTests() {
   }
 
   // -------------------------------------------------------------------------
+  // Scenario 13: CSPRNG Secure Batch ID Generation & Collision Resistance
+  // -------------------------------------------------------------------------
+  try {
+    const generatedIds = new Set();
+    const iterations = 100;
+    for (let i = 0; i < iterations; i++) {
+      const id = QrService.generateSecureBatchId();
+      assert.ok(BATCH_ID_REGEX.test(id), `Generated ID ${id} must match BATCH_ID_REGEX`);
+      assert.strictEqual(generatedIds.has(id), false, `Collision detected on iteration ${i}: ${id}`);
+      generatedIds.add(id);
+    }
+    assert.strictEqual(generatedIds.size, iterations, 'All 100 CSPRNG batch IDs must be unique');
+
+    // Also test db.generateUniqueBatchId()
+    const uniqueDbId = db.generateUniqueBatchId();
+    assert.ok(BATCH_ID_REGEX.test(uniqueDbId), 'db.generateUniqueBatchId must match BATCH_ID_REGEX');
+    assert.strictEqual(db.findBatchById(uniqueDbId), undefined, 'Generated DB ID must not collide with existing batches');
+
+    report('15. CSPRNG batch ID generation produces high-entropy unique identifiers without collisions', true);
+  } catch (err) {
+    report('15. CSPRNG batch ID generation produces unique identifiers', false, err);
+  }
+
+  // -------------------------------------------------------------------------
+  // Scenario 14: Duplicate Batch ID Creation Rejection
+  // -------------------------------------------------------------------------
+  try {
+    const dupBatchId = QrService.generateSecureBatchId();
+    const batchPayload = {
+      batchId: dupBatchId,
+      drugName: 'Collision Rejection Amoxicillin',
+      genericName: 'Amoxicillin',
+      dosage: '500mg',
+      quantity: 500,
+      manufacturingDate: '2026-03-01',
+      expiryDate: '2028-03-01',
+    };
+
+    // First creation succeeds
+    const firstRes = await request('POST', '/api/batches', batchPayload, mfgToken);
+    assert.strictEqual(firstRes.status, 201, 'First batch registration must succeed');
+
+    // Second creation with the exact same ID must be rejected with 409 Conflict
+    const secondRes = await request('POST', '/api/batches', batchPayload, mfgToken);
+    assert.strictEqual(secondRes.status, 409, 'Duplicate batch creation must be rejected with HTTP 409');
+    assert.ok(secondRes.data.error.includes('already exists'), 'Error message must specify batch already exists');
+
+    report('16. Duplicate batch ID is rejected safely with HTTP 409 Conflict', true);
+  } catch (err) {
+    report('16. Duplicate batch ID rejection', false, err);
+  }
+
+  // -------------------------------------------------------------------------
+  // Scenario 15: Tampered & Malformed Scanned QR Inputs
+  // -------------------------------------------------------------------------
+  try {
+    // 1. Javascript URI scheme (XSS attack attempt)
+    const xss = QrService.parseScannedContent('javascript:alert(document.cookie)');
+    assert.strictEqual(xss.valid, false, 'Javascript URI must be rejected');
+
+    // 2. Data URI scheme
+    const dataUri = QrService.parseScannedContent('data:text/html,<script>alert(1)</script>');
+    assert.strictEqual(dataUri.valid, false, 'Data URI must be rejected');
+
+    // 3. Traversal attempt
+    const traversal = QrService.parseScannedContent('http://localhost:5173/../../etc/passwd');
+    assert.strictEqual(traversal.valid, false, 'Path traversal attempt must be rejected');
+
+    // 4. Empty and whitespace input
+    assert.strictEqual(QrService.parseScannedContent('').valid, false);
+    assert.strictEqual(QrService.parseScannedContent('   ').valid, false);
+
+    report('17. Malicious, empty, and traversal QR scan inputs are rejected safely', true);
+  } catch (err) {
+    report('17. Malicious QR scan inputs are rejected', false, err);
+  }
+
+  // -------------------------------------------------------------------------
+  // Scenario 16: Cryptographic Digital Signature Creation & Tamper Detection
+  // -------------------------------------------------------------------------
+  try {
+    const testBatchData = {
+      batchId: 'MED-20261016-SEC01',
+      drugName: 'Ceftriaxone Injection',
+      manufacturerOrganizationId: 'org-mfg-001',
+      manufacturingDate: '2026-04-01',
+      expiryDate: '2028-04-01',
+      quantity: 1000,
+    };
+
+    // 1. Sign batch record
+    const sigResult = QrService.createBatchSignature(testBatchData);
+    assert.ok(sigResult.signature, 'Signature must be generated');
+    assert.strictEqual(sigResult.algorithm, 'HMAC-SHA256');
+    assert.ok(sigResult.keyId, 'Signature must include keyId for key rotation');
+
+    // 2. Verify pristine batch record
+    const validVerify = QrService.verifyBatchSignature({
+      ...testBatchData,
+      digitalSignature: sigResult,
+    });
+    assert.strictEqual(validVerify.valid, true, 'Pristine batch record signature must be valid');
+    assert.strictEqual(validVerify.error, undefined);
+
+    // 3. Tamper with drug name
+    const tamperedDrug = QrService.verifyBatchSignature({
+      ...testBatchData,
+      drugName: 'Altered Counterfeit Drug',
+      digitalSignature: sigResult,
+    });
+    assert.strictEqual(tamperedDrug.valid, false, 'Altered drug name must invalidate signature');
+    assert.ok(tamperedDrug.error.includes('mismatch'));
+
+    // 4. Tamper with expiry date
+    const tamperedExpiry = QrService.verifyBatchSignature({
+      ...testBatchData,
+      expiryDate: '2030-04-01', // Extended illegally
+      digitalSignature: sigResult,
+    });
+    assert.strictEqual(tamperedExpiry.valid, false, 'Altered expiry date must invalidate signature');
+
+    // 5. Tamper with quantity
+    const tamperedQty = QrService.verifyBatchSignature({
+      ...testBatchData,
+      quantity: 99999, // Diverted inventory
+      digitalSignature: sigResult,
+    });
+    assert.strictEqual(tamperedQty.valid, false, 'Altered quantity must invalidate signature');
+
+    report('18. Cryptographic HMAC-SHA256 signature validates pristine records and detects data tampering', true);
+  } catch (err) {
+    report('18. Cryptographic signature and tamper detection', false, err);
+  }
+
+  // -------------------------------------------------------------------------
+  // Scenario 17: Concurrent Multi-Location Scan Anomaly Telemetry
+  // -------------------------------------------------------------------------
+  const multiLocBatchId = QrService.generateSecureBatchId();
+  try {
+    db.createBatch({
+      batchId: multiLocBatchId,
+      drugName: 'Multi-Location Monitored Antibiotic',
+      genericName: 'Meropenem',
+      dosage: '1g IV',
+      quantity: 300,
+      remainingQuantity: 300,
+      manufacturerOrganizationId: 'org-mfg-001',
+      manufacturerName: 'Apex Pharmaceuticals Ltd.',
+      manufacturerAddress: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+      manufacturingDate: '2026-05-01',
+      expiryDate: '2028-05-01',
+      currentStatus: 'MANUFACTURED',
+      currentOwnerRole: 'MANUFACTURER',
+      currentOwnerName: 'Apex Pharmaceuticals Ltd.',
+      currentOwnerAddress: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+      isRecalled: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Simulate simultaneous scans from 5 different IP networks within 5 minutes
+    const testIps = ['198.51.100.1', '198.51.100.2', '198.51.100.3', '198.51.100.4', '198.51.100.5'];
+    for (const ip of testIps) {
+      db.logScan(multiLocBatchId, ip, 'Mozilla/5.0 Medical Scanner');
+      db.logScan(multiLocBatchId, ip, 'Mobile Browser');
+    }
+
+    const assessment = db.getScanTelemetryAssessment(multiLocBatchId);
+    assert.strictEqual(assessment.riskLevel, 'HIGH', 'Simultaneous multi-IP bursts must be flagged as HIGH risk');
+    assert.ok(
+      assessment.riskFactors.includes('MULTI_LOCATION_SIMULTANEOUS_BURST'),
+      'Must contain MULTI_LOCATION_SIMULTANEOUS_BURST flag'
+    );
+    assert.ok(assessment.uniqueIps5m >= 4, 'Must count unique IPs correctly');
+
+    // Public verification endpoint attaches the anomaly alert
+    const verifyRes = await request('GET', `/api/public/verify/${multiLocBatchId}`);
+    assert.strictEqual(verifyRes.status, 200);
+    assert.ok(
+      verifyRes.data.warnings.includes('MULTI_LOCATION_SIMULTANEOUS_BURST'),
+      'Public response warnings must include MULTI_LOCATION_SIMULTANEOUS_BURST'
+    );
+    assert.strictEqual(verifyRes.data.scanTelemetry?.riskLevel, 'HIGH');
+
+    report('19. Concurrent multi-location scan anomaly is detected and flagged in verification telemetry', true);
+  } catch (err) {
+    report('19. Concurrent multi-location scan anomaly detection', false, err);
+  }
+
+  // -------------------------------------------------------------------------
+  // Scenario 18: Full End-to-End Batch Creation -> QR -> Custody -> Verification
+  // -------------------------------------------------------------------------
+  try {
+    const e2eBatchId = QrService.generateSecureBatchId();
+
+    // 1. Create batch as Manufacturer
+    const createRes = await request('POST', '/api/batches', {
+      batchId: e2eBatchId,
+      drugName: 'End-to-End Provenance Vaccine',
+      genericName: 'mRNA-1273',
+      dosage: '0.5mL Vial',
+      quantity: 5000,
+      manufacturingDate: '2026-06-01',
+      expiryDate: '2027-06-01',
+    }, mfgToken);
+
+    assert.strictEqual(createRes.status, 201, 'Batch creation must succeed');
+    assert.ok(createRes.data.batch.digitalSignature, 'Created batch must have digital signature attached');
+    assert.strictEqual(createRes.data.batch.digitalSignature.algorithm, 'HMAC-SHA256');
+
+    // 2. Retrieve authoritative packaging QR as authorized Manufacturer
+    const qrRes = await request('GET', `/api/batches/${e2eBatchId}/qr`, null, mfgToken);
+    assert.strictEqual(qrRes.status, 200);
+    assert.ok(qrRes.data.qrSvg.includes('<svg'), 'QR SVG must be valid SVG markup');
+    assert.ok(qrRes.data.qrPngDataUrl.startsWith('data:image/png;base64,'), 'PNG DataURL must be 300-DPI Base64');
+    assert.ok(qrRes.data.printableLabelHtml.includes('GMP Certified'), 'Printable label must be generated');
+
+    // 3. Custody transfer to Distributor
+    const updateRes = await request('POST', `/api/batches/${e2eBatchId}/status`, {
+      newStatus: 'IN_TRANSIT_TO_DISTRIBUTOR',
+      location: 'Regional Distribution Center North',
+      temperatureCelsius: 3.8,
+      notes: 'Cold chain verified at logistics handoff',
+    }, mfgToken);
+    assert.strictEqual(updateRes.status, 200, 'Status update must succeed');
+
+    // 4. Public verification inspection
+    const publicVerifyRes = await request('GET', `/api/public/verify/${e2eBatchId}`);
+    assert.strictEqual(publicVerifyRes.status, 200);
+    assert.strictEqual(publicVerifyRes.data.verified, true);
+    assert.strictEqual(publicVerifyRes.data.status, 'IN_TRANSIT_TO_DISTRIBUTOR');
+    assert.strictEqual(publicVerifyRes.data.cryptographicProof?.verified, true);
+    assert.strictEqual(publicVerifyRes.data.provenanceHistory.length, 2, 'History must record creation and transit');
+
+    report('20. End-to-end batch creation, QR generation, custody transition, and public cryptographic verification succeeded', true);
+  } catch (err) {
+    report('20. End-to-end batch workflow', false, err);
+  }
+
+  // -------------------------------------------------------------------------
   // Summary
   // -------------------------------------------------------------------------
   console.log('\n================================================================');

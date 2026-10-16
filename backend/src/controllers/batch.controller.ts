@@ -41,9 +41,9 @@ export function getBatchById(req: AuthenticatedRequest, res: Response) {
   return res.json({ batch, history });
 }
 
-export function createBatch(req: AuthenticatedRequest, res: Response) {
+export async function createBatch(req: AuthenticatedRequest, res: Response) {
   const user = req.user!;
-  const {
+  let {
     batchId,
     medicineId,
     drugName,
@@ -57,13 +57,30 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
     location,
   } = req.body;
 
+  // 1. Secure Unique Identifier Generation & Collision Check
+  if (!batchId || typeof batchId !== 'string' || !batchId.trim()) {
+    batchId = db.generateUniqueBatchId();
+  } else {
+    batchId = batchId.trim().toUpperCase();
+  }
+
   const existing = db.findBatchById(batchId);
   if (existing) {
-    return res.status(409).json({ error: `Batch ID ${batchId} is already registered on MediTrace` });
+    return res.status(409).json({ error: `Batch ID ${batchId} already exists and is registered on MediTrace` });
   }
 
   const txHash = blockchainService.generateTxHash();
   const qrCodeUrl = QrService.buildVerificationUrl(batchId);
+
+  // 2. Cryptographic Digital Signature Creation (Tamper-evident authenticity)
+  const digitalSignature = QrService.createBatchSignature({
+    batchId,
+    drugName,
+    manufacturerOrganizationId: user.organizationId,
+    manufacturingDate,
+    expiryDate,
+    quantity: Number(quantity),
+  });
 
   const newBatch: BatchRecord = {
     batchId,
@@ -74,8 +91,8 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
     dosage: dosage || 'Standard Formulation',
     strength: strength || undefined,
     packaging: packaging || undefined,
-    quantity,
-    remainingQuantity: quantity,
+    quantity: Number(quantity),
+    remainingQuantity: Number(quantity),
     manufacturerName: user.organizationName || user.name,
     manufacturerAddress: user.walletAddress,
     manufacturingDate,
@@ -86,6 +103,7 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
     currentOwnerAddress: user.walletAddress,
     isRecalled: false,
     qrCodeUrl,
+    digitalSignature,
     blockchainTxHash: txHash,
     blockNumber: Math.floor(10000 + Math.random() * 5000),
     createdAt: new Date().toISOString(),
@@ -103,13 +121,16 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
     actorAddress: user.walletAddress,
     location: location || 'Manufacturing Facility - Batch Formulation Unit',
     temperatureCelsius: 20.0,
-    notes: 'Batch synthesized, quality certified, and indexed into provenance ledger.',
+    notes: 'Batch synthesized, cryptographically signed, and indexed into provenance ledger.',
     txHash,
   };
 
+  // 3. Persist batch in database FIRST
   db.createBatch(newBatch, initialEvent);
 
-  const qrSvg = QrService.generateQrSvg(batchId);
+  // 4. Generate real scannable ISO/IEC 18004 QR codes ONLY after successful persistence
+  const qrSvg = await QrService.generateQrSvg(batchId);
+  const qrPngDataUrl = await QrService.generateQrPngDataUrl(batchId);
 
   return res.status(201).json({
     message: 'Batch successfully created and registered on ledger',
@@ -117,6 +138,8 @@ export function createBatch(req: AuthenticatedRequest, res: Response) {
     data: newBatch,
     qrCodeUrl,
     qrSvg,
+    qrPngDataUrl,
+    digitalSignature,
     txHash,
   });
 }
@@ -294,7 +317,7 @@ export function recallBatch(req: AuthenticatedRequest, res: Response) {
  * Retrieves the packaging QR Code matrix and printable GS1/GMP batch label
  * for authorized pharmaceutical participants (Manufacturer, Custodians, Admin).
  */
-export function getBatchQr(req: AuthenticatedRequest, res: Response) {
+export async function getBatchQr(req: AuthenticatedRequest, res: Response) {
   const user = req.user!;
   const batchId = (req.params.batchId || '').trim().toUpperCase();
 
@@ -316,8 +339,9 @@ export function getBatchQr(req: AuthenticatedRequest, res: Response) {
   }
 
   const verificationUrl = QrService.buildVerificationUrl(batch.batchId);
-  const qrSvg = QrService.generateQrSvg(batch.batchId);
-  const printableLabelHtml = QrService.generatePrintableLabelHtml({
+  const qrSvg = await QrService.generateQrSvg(batch.batchId);
+  const qrPngDataUrl = await QrService.generateQrPngDataUrl(batch.batchId, 600);
+  const printableLabelHtml = await QrService.generatePrintableLabelHtml({
     batchId: batch.batchId,
     drugName: batch.drugName,
     genericName: batch.genericName,
@@ -326,6 +350,8 @@ export function getBatchQr(req: AuthenticatedRequest, res: Response) {
     manufacturingDate: batch.manufacturingDate,
     expiryDate: batch.expiryDate,
     verificationUrl,
+    signature: batch.digitalSignature?.signature,
+    keyId: batch.digitalSignature?.keyId,
   });
 
   return res.json({
@@ -336,6 +362,8 @@ export function getBatchQr(req: AuthenticatedRequest, res: Response) {
     manufacturerName: batch.manufacturerName,
     verificationUrl,
     qrSvg,
+    qrPngDataUrl,
+    digitalSignature: batch.digitalSignature,
     printableLabelHtml,
   });
 }

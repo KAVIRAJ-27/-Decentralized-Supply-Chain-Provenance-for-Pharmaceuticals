@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { api } from '../services/api';
 import { PublicVerificationResponse } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
@@ -14,6 +15,7 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
   const [error, setError] = useState<string | null>(null);
   const [verification, setVerification] = useState<PublicVerificationResponse | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [qrSvgString, setQrSvgString] = useState<string>('');
 
   const handleVerify = async (idToVerify?: string) => {
     const id = (idToVerify || batchIdInput).trim().toUpperCase();
@@ -24,9 +26,22 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
     try {
       const result = await api.verifyBatch(id);
       setVerification(result);
+
+      // Generate real ISO/IEC 18004 scannable QR SVG
+      const canonicalUrl = `${window.location.origin}/?verify=${encodeURIComponent(id)}`;
+      QRCode.toString(canonicalUrl, {
+        type: 'svg',
+        errorCorrectionLevel: 'H',
+        margin: 4,
+        width: 140,
+        color: { dark: '#000000', light: '#FFFFFF' },
+      })
+        .then((svg) => setQrSvgString(svg))
+        .catch(() => {});
     } catch (err: any) {
       setError(err.message || 'Verification failed. Batch could not be validated.');
       setVerification(null);
+      setQrSvgString('');
     } finally {
       setLoading(false);
     }
@@ -47,23 +62,8 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     
-    const qrSvg = `
-      <svg width="180" height="180" viewBox="0 0 200 200" fill="#000" xmlns="http://www.w3.org/2000/svg">
-        <rect x="10" y="10" width="50" height="50" fill="#070a12" rx="4" />
-        <rect x="20" y="20" width="30" height="30" fill="#ffffff" rx="2" />
-        <rect x="27" y="27" width="16" height="16" fill="#00d2b4" rx="2" />
-        <rect x="140" y="10" width="50" height="50" fill="#070a12" rx="4" />
-        <rect x="150" y="20" width="30" height="30" fill="#ffffff" rx="2" />
-        <rect x="157" y="27" width="16" height="16" fill="#00d2b4" rx="2" />
-        <rect x="10" y="140" width="50" height="50" fill="#070a12" rx="4" />
-        <rect x="20" y="150" width="30" height="30" fill="#ffffff" rx="2" />
-        <rect x="27" y="157" width="16" height="16" fill="#00d2b4" rx="2" />
-        <rect x="70" y="15" width="12" height="12" fill="#070a12" />
-        <rect x="90" y="15" width="12" height="12" fill="#070a12" />
-        <rect x="115" y="15" width="12" height="12" fill="#070a12" />
-        <rect x="75" y="75" width="14" height="14" fill="#00b89e" />
-        <rect x="95" y="95" width="14" height="14" fill="#00d2b4" rx="2" />
-      </svg>
+    const qrSvg = qrSvgString || `
+      <div style="font-family: monospace; font-size: 14px; padding: 20px;">${verification.batchId}</div>
     `;
 
     printWindow.document.write(`
@@ -272,6 +272,59 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
             </div>
           )}
 
+          {/* Critical Cryptographic Signature Tamper Alert */}
+          {(verification.warnings?.includes('SIGNATURE_TAMPER_DETECTED') ||
+            (verification.cryptographicProof && !verification.cryptographicProof.verified)) && (
+            <div
+              style={{
+                background: 'rgba(239, 68, 68, 0.25)',
+                border: '1px solid rgba(239, 68, 68, 0.8)',
+                borderRadius: '10px',
+                padding: '16px 20px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+              }}
+            >
+              <span style={{ fontSize: '2rem' }}>⚠️</span>
+              <div>
+                <strong style={{ color: '#f87171', fontSize: '1.05rem' }}>
+                  CRITICAL INTEGRITY ALERT: DIGITAL SIGNATURE TAMPER DETECTED
+                </strong>
+                <div style={{ color: '#fca5a5', fontSize: '0.88rem', marginTop: '4px' }}>
+                  The cryptographic digital seal on this batch does not match the authoritative manufacturer record. Drug attributes, dosages, or expiration dates may have been modified or tampered with.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Concurrent Multi-Location Anomaly Alert */}
+          {verification.warnings?.includes('MULTI_LOCATION_SIMULTANEOUS_BURST') && (
+            <div
+              style={{
+                background: 'rgba(234, 88, 12, 0.2)',
+                border: '1px solid rgba(234, 88, 12, 0.7)',
+                borderRadius: '10px',
+                padding: '14px 18px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <span style={{ fontSize: '1.8rem' }}>📍</span>
+              <div>
+                <strong style={{ color: '#fb923c', fontSize: '0.98rem' }}>
+                  CONCURRENT MULTI-LOCATION SCAN ANOMALY DETECTED
+                </strong>
+                <div style={{ color: '#fed7aa', fontSize: '0.85rem', marginTop: '2px' }}>
+                  This packaging identifier was simultaneously queried across multiple distinct IP networks within minutes. High risk of counterfeit label cloning.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Expired Medicine Warning */}
           {verification.isExpired && (
             <div
@@ -423,22 +476,11 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
                   justifyContent: 'center',
                 }}
               >
-                <svg width="140" height="140" viewBox="0 0 200 200" fill="#000" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="10" y="10" width="50" height="50" fill="#070a12" rx="4" />
-                  <rect x="20" y="20" width="30" height="30" fill="#ffffff" rx="2" />
-                  <rect x="27" y="27" width="16" height="16" fill="#00d2b4" rx="2" />
-                  <rect x="140" y="10" width="50" height="50" fill="#070a12" rx="4" />
-                  <rect x="150" y="20" width="30" height="30" fill="#ffffff" rx="2" />
-                  <rect x="157" y="27" width="16" height="16" fill="#00d2b4" rx="2" />
-                  <rect x="10" y="140" width="50" height="50" fill="#070a12" rx="4" />
-                  <rect x="20" y="150" width="30" height="30" fill="#ffffff" rx="2" />
-                  <rect x="27" y="157" width="16" height="16" fill="#00d2b4" rx="2" />
-                  <rect x="70" y="15" width="12" height="12" fill="#070a12" />
-                  <rect x="90" y="15" width="12" height="12" fill="#070a12" />
-                  <rect x="115" y="15" width="12" height="12" fill="#070a12" />
-                  <rect x="75" y="75" width="14" height="14" fill="#00b89e" />
-                  <rect x="95" y="95" width="14" height="14" fill="#00d2b4" rx="2" />
-                </svg>
+                {qrSvgString ? (
+                  <div dangerouslySetInnerHTML={{ __html: qrSvgString }} />
+                ) : (
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Generating QR...</div>
+                )}
               </div>
 
               <div style={{ flex: 1, minWidth: '240px' }}>
@@ -561,6 +603,44 @@ export const PublicVerifyPage: React.FC<Props> = ({ initialBatchId }) => {
             {verification.verifiedAt && (
               <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '4px' }}>
                 Verified at: {new Date(verification.verifiedAt).toLocaleString()}
+              </div>
+            )}
+            {verification.cryptographicProof && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginTop: '10px',
+                  paddingTop: '10px',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  fontSize: '0.78rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ color: verification.cryptographicProof.verified ? '#34d399' : '#f87171' }}>
+                  {verification.cryptographicProof.verified ? '🔒' : '⚠️'}
+                </span>
+                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>
+                  Digital Signature: {verification.cryptographicProof.algorithm}
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: verification.cryptographicProof.verified
+                      ? 'rgba(16, 185, 129, 0.2)'
+                      : 'rgba(239, 68, 68, 0.2)',
+                    color: verification.cryptographicProof.verified ? '#34d399' : '#f87171',
+                    fontWeight: 700,
+                  }}
+                >
+                  {verification.cryptographicProof.verified ? 'SIGNATURE VALID' : 'TAMPER DETECTED'}
+                </span>
+                <span className="mono" style={{ color: 'var(--text-dim)', marginLeft: 'auto', fontSize: '0.72rem' }}>
+                  Key ID: {verification.cryptographicProof.keyId}
+                </span>
               </div>
             )}
           </div>

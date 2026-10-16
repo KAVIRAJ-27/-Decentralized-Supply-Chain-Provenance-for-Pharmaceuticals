@@ -64,8 +64,40 @@ export function clearLoginAttempts(req: Request) {
 }
 
 /**
+ * Middleware to protect public verification endpoint from scraping bursts
+ */
+const verificationRequests = new Map<string, RateLimitRecord>();
+const MAX_VERIFY_PER_MIN = 60;
+
+export function checkVerificationRateLimit(req: Request, res: Response, next: NextFunction) {
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+  const now = Date.now();
+  const record = verificationRequests.get(ip);
+
+  if (record) {
+    if (now > record.resetAt) {
+      verificationRequests.set(ip, { attempts: 1, resetAt: now + WINDOW_MS });
+    } else if (record.attempts >= MAX_VERIFY_PER_MIN) {
+      const waitSeconds = Math.ceil((record.resetAt - now) / 1000);
+      return res.status(429).json({
+        verified: false,
+        error: `Too many verification requests from this network. Please wait ${waitSeconds} seconds before trying again.`,
+        retryAfter: waitSeconds,
+      });
+    } else {
+      record.attempts += 1;
+    }
+  } else {
+    verificationRequests.set(ip, { attempts: 1, resetAt: now + WINDOW_MS });
+  }
+
+  next();
+}
+
+/**
  * Reset all rate limits (useful for test suites)
  */
 export function resetRateLimits() {
   loginAttempts.clear();
+  verificationRequests.clear();
 }

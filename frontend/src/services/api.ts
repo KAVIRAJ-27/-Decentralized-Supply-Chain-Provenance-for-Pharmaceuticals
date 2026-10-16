@@ -325,6 +325,13 @@ export const api = {
     manufacturerName: string;
     verificationUrl: string;
     qrSvg: string;
+    qrPngDataUrl?: string;
+    digitalSignature?: {
+      signature: string;
+      algorithm: string;
+      keyId: string;
+      signedAt: string;
+    };
     printableLabelHtml: string;
   }> {
     const res = await fetch(`${API_BASE}/batches/${encodeURIComponent(batchId)}/qr`, {

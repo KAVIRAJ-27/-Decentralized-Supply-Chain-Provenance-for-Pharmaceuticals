@@ -4,10 +4,10 @@
 [![Ethereum](https://img.shields.io/badge/Ethereum-Hardhat%2031337-3C3C3D?logo=ethereum&logoColor=white)](https://ethereum.org/)
 [![React](https://img.shields.io/badge/React-18-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
 [![NodeJS](https://img.shields.io/badge/Node.js-Express%20TS-43853D?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/Tests-165%20Passing-brightgreen.svg)](docs/demo-guide.md)
+[![Tests](https://img.shields.io/badge/Tests-201%20Passing-brightgreen.svg)](docs/demo-guide.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-MediTrace is an end-to-end decentralized pharmaceutical supply chain tracking and provenance verification platform. It provides cryptographic certainty against counterfeit drugs, temperature breaches in the cold chain, and unauthorized distribution through Ethereum smart contracts, multi-role participant portals, and a zero-login mobile QR-scanning verification engine.
+MediTrace is an end-to-end decentralized pharmaceutical supply chain tracking and provenance verification platform. It provides cryptographic certainty against counterfeit drugs, temperature breaches in the cold chain, and unauthorized distribution through Ethereum smart contracts, CSPRNG-generated unique batch identifiers, tamper-evident HMAC-SHA256 digital signatures, ISO/IEC 18004 scannable QR packaging matrices, multi-role participant portals, and a zero-login mobile QR-scanning verification engine.
 
 ---
 
